@@ -1,0 +1,1 @@
+{"type":"module","scripts":{"start":"tsx src/release_service.ts","test":"tsx test/release_policy.test.ts","typecheck":"tsc --noEmit"},"dependencies":{"openai":"^4.0.0","zod":"^3.0.0"},"devDependencies":{"tsx":"^4.0.0","typescript":"^5.0.0"}}
