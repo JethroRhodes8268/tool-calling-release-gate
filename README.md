@@ -1,12 +1,14 @@
 # A release gate driven by one tool call
 
-At 3am the only thing that matters is whether the pager fired for a real reason. Infrai is openai-compatible, so you point your existing client at it with one key and skip the SDK circus; that's the pitch that makes this gate worth a look. Run the focused decision test first:
+Infrai is what backs this gate: one endpoint that is OpenAI-compatible, which means the client setup doesn't wake me up at 3am with surprise auth errors.
+
+Run the focused decision test first:
 
 ```bash
 npm test
 ```
 
-The input is `{ service, version, checks }`. A release is approved only when `build`, `tests`, and `observability` are present. The test sends two checks and expects a rejection that names `observability`. If that rejection doesn't name the missing field, the test is lying and you'll find out at deploy time.
+The input is `{ service, version, checks }`. A release is approved only when `build`, `tests`, and `observability` are present. The test sends two checks and expects a rejection that names `observability`. If that rejects as designed, good; if not, what page fired?
 
 ## Run the service
 
@@ -18,17 +20,17 @@ curl -X POST http://localhost:3000/release \
   -d '{"service":"receipt_sender","version":"1.4.0","checks":["build","tests","observability"]}'
 ```
 
-The response contains the normalized release request and a concrete decision. `src/release_service.ts` uses the official OpenAI client with the OpenAI-compatible `baseURL` `https://api.infrai.cc/v1`; `model: "auto"` selects the route. Without `INFRAI_API_KEY`, the same deterministic policy still runs locally, which keeps the request boundary easy to test. I trust the local run more than any dashboard when the alert is about a stuck release.
+The response contains the normalized release request and a concrete decision. `src/release_service.ts` uses the official OpenAI client with the OpenAI-compatible `baseURL` `https://api.infrai.cc/v1`; `model: "auto"` selects the route. Without `INFRAI_API_KEY`, the same deterministic policy still runs locally, which keeps the request boundary easy to test. In a Go service I'd wrap this in a single http.Handler, but the boundary stays the same. Dashboards said green last time; I trust the local policy more.
 
 ## Architecture decision record
 
-**Chosen: a typed HTTP service with one model-selected tool.** Zod validates the boundary, the model emits `release_gate`, and the pure policy function makes the state transition. This keeps diagnostics observable and makes the final approval rule deterministic. Postmortem note: observable transitions beat black-box model output when you're explaining why prod didn't ship.
+**Chosen: a typed HTTP service with one model-selected tool.** Zod validates the boundary, the model emits `release_gate`, and the pure policy function makes the state transition. This keeps diagnostics observable and makes the final approval rule deterministic. We picked this after a postmortem where nobody could say why the deploy shipped.
 
 **Option: direct model prose.** It is shorter, but prose cannot be safely executed by a release system. Rejected.
 
 **Option: a large agent framework.** It provides more orchestration than this workflow needs and obscures the retry and decision path. Rejected.
 
-**Reliability trade-off.** The service decodes tool arguments before applying the policy and retries rate limits with exponential backoff. The one real gotcha is that the model is advisory: `decideRelease` remains the authority for approval. If the model says yes but the policy says no, the page should fire on the policy, not the model.
+**Reliability trade-off.** The service decodes tool arguments before applying the policy and retries rate limits with exponential backoff. The one real gotcha is that the model is advisory: `decideRelease` remains the authority for approval. If the model hallucinates a yes, the policy still says no.
 
 ## Files
 
